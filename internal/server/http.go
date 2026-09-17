@@ -1,9 +1,11 @@
 package server
+
 import (
 	"encoding/json"
-	"net/http"
 	"github.com/gorilla/mux"
+	"net/http"
 )
+
 func NewHTTPServer(addr string) *http.Server {
 
 	httpsrv := newHTTPServer()
@@ -13,7 +15,7 @@ func NewHTTPServer(addr string) *http.Server {
 	r.HandleFunc("/", httpsrv.handleConsume).Methods("GET")
 
 	return &http.Server{
-		Addr: addr,
+		Addr:    addr,
 		Handler: r,
 	}
 }
@@ -34,7 +36,6 @@ type ConsumeResponse struct {
 	Record Record `json:"record"`
 }
 
-
 type httpServer struct {
 	Log *Log
 }
@@ -44,7 +45,6 @@ func newHTTPServer() *httpServer {
 		Log: NewLog(),
 	}
 }
-
 
 func (s *httpServer) handleProduce(w http.ResponseWriter, r *http.Request) {
 	var req ProduceRequest

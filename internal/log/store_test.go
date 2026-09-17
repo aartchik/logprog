@@ -12,7 +12,6 @@ var (
 	width = uint64(len(write)) + uint64(lenWidth)
 )
 
-
 func TestStoreAppendRead(t *testing.T) {
 	f, err := os.CreateTemp("", "store_append_read_test")
 	require.NoError(t, err)
@@ -31,15 +30,13 @@ func TestStoreAppendRead(t *testing.T) {
 
 }
 
-
-
 func testAppend(t *testing.T, s *store) {
 	t.Helper()
 
-	for i:=uint64(1); i <= 3; i++ {
+	for i := uint64(1); i <= 3; i++ {
 		n, pos, err := s.Append(write)
 		require.NoError(t, err)
-		require.Equal(t, pos + n, i * width)
+		require.Equal(t, pos+n, i*width)
 	}
 }
 
@@ -116,6 +113,3 @@ func openFile(name string) (file *os.File, size int64, err error) {
 
 	return f, fi.Size(), nil
 }
-
-
-

@@ -2,7 +2,17 @@ package server
 
 import (
 	"context"
+	"time"
 
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	"go.opencensus.io/plugin/ocgrpc"
+	"go.opencensus.io/stats/view"
+	"go.opencensus.io/trace"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -41,13 +51,44 @@ type grpcServer struct {
 
 func NewGRPCServer(
 	config *Config,
-	opts ...grpc.ServerOption,
+	grpcOpts ...grpc.ServerOption,
 ) (*grpc.Server, error) {
-	opts = append(opts,
-		grpc.StreamInterceptor(streamAuthenticateInterceptor),
-		grpc.UnaryInterceptor(unaryAuthenticateInterceptor),
+	logger := zap.L().Named("server")
+	zapOpts := []grpc_zap.Option{
+		grpc_zap.WithDurationField(
+			func(duration time.Duration) zapcore.Field {
+				return zap.Int64(
+					"grpc.time_ns",
+					duration.Nanoseconds(),
+				)
+			},
+		),
+	}
+
+	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
+	err := view.Register(ocgrpc.DefaultServerViews...)
+	if err != nil {
+		return nil, err
+	}
+
+	grpcOpts = append(grpcOpts,
+		grpc.StreamInterceptor(
+			grpc_middleware.ChainStreamServer(
+				grpc_ctxtags.StreamServerInterceptor(),
+				grpc_zap.StreamServerInterceptor(logger, zapOpts...),
+				grpc_auth.StreamServerInterceptor(authenticate),
+			),
+		),
+		grpc.UnaryInterceptor(
+			grpc_middleware.ChainUnaryServer(
+				grpc_ctxtags.UnaryServerInterceptor(),
+				grpc_zap.UnaryServerInterceptor(logger, zapOpts...),
+				grpc_auth.UnaryServerInterceptor(authenticate),
+			),
+		),
+		grpc.StatsHandler(&ocgrpc.ServerHandler{}),
 	)
-	gsrv := grpc.NewServer(opts...)
+	gsrv := grpc.NewServer(grpcOpts...)
 
 	srv, err := newgrpcServer(config)
 	if err != nil {
@@ -172,41 +213,3 @@ func subject(ctx context.Context) string {
 }
 
 type subjectContextKey struct{}
-
-func unaryAuthenticateInterceptor(
-	ctx context.Context,
-	req interface{},
-	info *grpc.UnaryServerInfo,
-	handler grpc.UnaryHandler,
-) (interface{}, error) {
-	ctx, err := authenticate(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return handler(ctx, req)
-}
-
-func streamAuthenticateInterceptor(
-	srv interface{},
-	stream grpc.ServerStream,
-	info *grpc.StreamServerInfo,
-	handler grpc.StreamHandler,
-) error {
-	ctx, err := authenticate(stream.Context())
-	if err != nil {
-		return err
-	}
-	return handler(srv, authenticatedServerStream{
-		ServerStream: stream,
-		ctx:          ctx,
-	})
-}
-
-type authenticatedServerStream struct {
-	grpc.ServerStream
-	ctx context.Context
-}
-
-func (s authenticatedServerStream) Context() context.Context {
-	return s.ctx
-}

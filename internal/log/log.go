@@ -1,20 +1,22 @@
 package log
+
 import (
 	"io"
+	api "logprog/api/v1"
 	"os"
 	"path"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
-	api "logprog/api/v1"
 )
+
 type Log struct {
-	mu sync.RWMutex
-	Dir string
-	Config Config
+	mu            sync.RWMutex
+	Dir           string
+	Config        Config
 	activeSegment *segment
-	segments []*segment
+	segments      []*segment
 }
 
 func NewLog(dir string, c Config) (*Log, error) {
@@ -75,55 +77,53 @@ func (l *Log) setup() error {
 }
 
 func (l *Log) Append(record *api.Record) (uint64, error) {
-    l.mu.Lock()
-    defer l.mu.Unlock()
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
-    off, err := l.activeSegment.Append(record)
-    if err != nil {
-        return 0, err
-    }
+	off, err := l.activeSegment.Append(record)
+	if err != nil {
+		return 0, err
+	}
 
-    if l.activeSegment.IsMaxed() {
-        err = l.newSegment(off + 1)
-    }
+	if l.activeSegment.IsMaxed() {
+		err = l.newSegment(off + 1)
+	}
 
-    return off, err
+	return off, err
 }
 
 func (l *Log) Read(off uint64) (*api.Record, error) {
-    l.mu.RLock()
-    defer l.mu.RUnlock()
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 
-    var s *segment
+	var s *segment
 
-    for _, segment := range l.segments {
-        if segment.baseOffset <= off &&
-            off < segment.nextOffset {
-            s = segment
-            break
-        }
-    }
+	for _, segment := range l.segments {
+		if segment.baseOffset <= off &&
+			off < segment.nextOffset {
+			s = segment
+			break
+		}
+	}
 
-    if s == nil || s.nextOffset <= off {
-        return nil, api.ErrOffsetOutOfRange{Offset: off}
-    }
+	if s == nil || s.nextOffset <= off {
+		return nil, api.ErrOffsetOutOfRange{Offset: off}
+	}
 
-    return s.Read(off)
+	return s.Read(off)
 }
 
 func (l *Log) Close() error {
-    l.mu.Lock()
-    defer l.mu.Unlock()
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
-    for _, segment := range l.segments {
-        if err := segment.Close(); err != nil {
-            return err
-        }
-    }
+	for _, segment := range l.segments {
+		if err := segment.Close(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
-
-
 
 func (l *Log) Remove() error {
 	if err := l.Close(); err != nil {
@@ -142,10 +142,10 @@ func (l *Log) Reset() error {
 }
 
 func (l *Log) LowestOffset() (uint64, error) {
-    l.mu.RLock()
-    defer l.mu.RUnlock()
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 
-    return l.segments[0].baseOffset, nil
+	return l.segments[0].baseOffset, nil
 }
 
 func (l *Log) HighestOffset() (uint64, error) {

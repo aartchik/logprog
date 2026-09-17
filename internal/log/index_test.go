@@ -1,9 +1,10 @@
 package log
+
 import (
+	"github.com/stretchr/testify/require"
 	"io"
 	"os"
 	"testing"
-	"github.com/stretchr/testify/require"
 )
 
 func TestIndex(t *testing.T) {
@@ -25,8 +26,8 @@ func TestIndex(t *testing.T) {
 		Off uint32
 		Pos uint64
 	}{
-	{Off: 0, Pos: 0},
-	{Off: 1, Pos: 10},
+		{Off: 0, Pos: 0},
+		{Off: 1, Pos: 10},
 	}
 
 	for _, want := range entries {

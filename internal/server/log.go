@@ -8,13 +8,13 @@ import (
 var ErrOffsetNotFound error = fmt.Errorf("offset not found")
 
 type Record struct {
-	Value []byte    `json:"value"`
-	Offset uint64	`json:"offset"`
+	Value  []byte `json:"value"`
+	Offset uint64 `json:"offset"`
 }
 
 type Log struct {
-	mu sync.Mutex
-	records  []Record
+	mu      sync.Mutex
+	records []Record
 }
 
 func NewLog() *Log {

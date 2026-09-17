@@ -1,12 +1,12 @@
 package log
 
 import (
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+	"io/ioutil"
+	api "logprog/api/v1"
 	"os"
 	"testing"
-	"io/ioutil"
-	"github.com/stretchr/testify/require"
-	api "logprog/api/v1"
-	"google.golang.org/protobuf/proto"
 )
 
 func TestLog(t *testing.T) {
@@ -15,8 +15,8 @@ func TestLog(t *testing.T) {
 		log *Log,
 	){
 		"append and read a record succeeds": testAppendRead,
-		"offset out of range error":        testOutOfRangeErr,
-		"init with existing segments":      testInitExisting,
+		"offset out of range error":         testOutOfRangeErr,
+		"init with existing segments":       testInitExisting,
 		"reader":                            testReader,
 		"truncate":                          testTruncate,
 	} {
@@ -49,7 +49,6 @@ func testAppendRead(t *testing.T, log *Log) {
 	require.NoError(t, err)
 	require.Equal(t, append.Value, read.Value)
 }
-
 
 func testInitExisting(t *testing.T, o *Log) {
 	append := &api.Record{

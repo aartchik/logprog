@@ -12,13 +12,13 @@ var (
 )
 
 const (
-	 lenWidth int = 8 
+	lenWidth int = 8
 )
 
 type store struct {
 	*os.File
-	mu sync.Mutex
-	buf *bufio.Writer
+	mu   sync.Mutex
+	buf  *bufio.Writer
 	size uint64
 }
 
@@ -31,7 +31,7 @@ func NewStore(f *os.File) (*store, error) {
 
 	return &store{
 		File: f,
-		buf: bufio.NewWriter(f),
+		buf:  bufio.NewWriter(f),
 		size: size,
 	}, nil
 }
@@ -68,7 +68,7 @@ func (s *store) Read(pos uint64) ([]byte, error) {
 	}
 	sz := binary.BigEndian.Uint64(size)
 	b := make([]byte, sz)
-	if _, err := s.File.ReadAt(b, int64(pos + uint64(lenWidth))); err != nil {
+	if _, err := s.File.ReadAt(b, int64(pos+uint64(lenWidth))); err != nil {
 		return nil, err
 	}
 	return b, nil

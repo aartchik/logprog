@@ -2,23 +2,22 @@ package log
 
 import (
 	"fmt"
+	"google.golang.org/protobuf/proto"
+	api "logprog/api/v1"
 	"os"
 	"path"
-	api "logprog/api/v1"
-	"google.golang.org/protobuf/proto"
 )
 
 type segment struct {
-	store *store
-	index *index
+	store                  *store
+	index                  *index
 	baseOffset, nextOffset uint64
-	config Config
+	config                 Config
 }
 
-
-func newSegment(dir string,  baseOffset uint64, c Config) (*segment, error) {
+func newSegment(dir string, baseOffset uint64, c Config) (*segment, error) {
 	s := &segment{
-		config: c,
+		config:     c,
 		baseOffset: baseOffset,
 	}
 
@@ -53,7 +52,7 @@ func newSegment(dir string,  baseOffset uint64, c Config) (*segment, error) {
 	if off, _, err := s.index.Read(-1); err != nil {
 		s.nextOffset = baseOffset
 	} else {
-		s.nextOffset = baseOffset + entWidth * uint64(off) + 1
+		s.nextOffset = baseOffset + entWidth*uint64(off) + 1
 	}
 	return s, nil
 }
@@ -72,7 +71,7 @@ func (s *segment) Append(record *api.Record) (offset uint64, err error) {
 	if err != nil {
 		return 0, err
 	}
-	if err = s.index.Write(uint32(s.nextOffset - s.baseOffset), pos); err != nil {
+	if err = s.index.Write(uint32(s.nextOffset-s.baseOffset), pos); err != nil {
 		return 0, err
 	}
 	s.nextOffset++
@@ -127,5 +126,5 @@ func (s *segment) Close() error {
 }
 
 func nearestMultiple(j, k uint64) uint64 {
-    return (j / k) * k
+	return (j / k) * k
 }
