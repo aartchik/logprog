@@ -1,0 +1,15 @@
+replicas: 3
+
+image:
+  repository: logprog
+  tag: 0.0.1
+  pullPolicy: IfNotPresent
+
+rpcPort: 8400
+
+serfPort: 8401
+
+storage: 1Gi
+
+nameOverride: ""
+fullnameOverride: ""

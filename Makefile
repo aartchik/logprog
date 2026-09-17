@@ -50,3 +50,7 @@ gencert: init
 		-cn="nobody" \
 		test/client-csr.json | cfssljson -bare nobody-client
 	mv *.pem *.csr ${CONFIG_PATH}
+
+TAG ?= 0.0.1
+build-docker:
+	docker build -t logprog:$(TAG) .

@@ -1,0 +1,11 @@
+apiVersion: v2
+
+name: proglog
+
+description: A Helm chart for deploying the Proglog distributed log service
+
+type: application
+
+version: 0.1.0
+
+appVersion: "0.0.1"
