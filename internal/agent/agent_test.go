@@ -17,10 +17,12 @@ import (
 	api "logprog/api/v1"
 	"logprog/internal/agent"
 	"logprog/internal/config"
+	"logprog/internal/loadbalancer"
 )
 
 func TestAgent(t *testing.T) {
-	// TLS-конфиг для gRPC-сервера каждой ноды.
+	// TLS-конфигурация, которую сервер использует
+	// для входящих клиентских соединений.
 	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.ServerCertFile,
 		KeyFile:       config.ServerKeyFile,
@@ -30,7 +32,8 @@ func TestAgent(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// TLS-конфиг, с которым ноды подключаются друг к другу.
+	// TLS-конфигурация для соединений между серверами
+	// и для нашего тестового клиента.
 	peerTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.RootClientCertFile,
 		KeyFile:       config.RootClientKeyFile,
@@ -44,7 +47,11 @@ func TestAgent(t *testing.T) {
 
 	// Создаём кластер из трёх нод.
 	for i := 0; i < 3; i++ {
-		// Один порт для Serf, второй для gRPC.
+		// Нам нужны два порта:
+		//
+		// ports[0] — Serf / service discovery
+		// ports[1] — RPC-порт, на котором через cmux
+		//            работают gRPC и Raft.
 		ports := dynaport.Get(2)
 
 		bindAddr := fmt.Sprintf(
@@ -55,14 +62,16 @@ func TestAgent(t *testing.T) {
 
 		rpcPort := ports[1]
 
-		// У каждой ноды своё физическое хранилище.
+		// Каждой ноде даём отдельную временную директорию.
 		dataDir, err := ioutil.TempDir("", "agent-test-log")
 		require.NoError(t, err)
 
 		var startJoinAddrs []string
 
-		// Node 0 создаёт кластер.
-		// Node 1 и Node 2 входят в кластер через Node 0.
+		// Первая нода создаёт кластер.
+		//
+		// Вторая и третья ноды через Serf подключаются
+		// к первой ноде.
 		if i != 0 {
 			startJoinAddrs = append(
 				startJoinAddrs,
@@ -71,22 +80,27 @@ func TestAgent(t *testing.T) {
 		}
 
 		a, err := agent.New(agent.Config{
-			NodeName:        fmt.Sprintf("%d", i),
-			StartJoinAddrs:  startJoinAddrs,
-			BindAddr:        bindAddr,
-			RPCPort:         rpcPort,
-			DataDir:         dataDir,
-			ACLModelFile:    config.ACLModelFile,
-			ACLPolicyFile:   config.ACLPolicyFile,
+			NodeName:       fmt.Sprintf("%d", i),
+			StartJoinAddrs: startJoinAddrs,
+			BindAddr:       bindAddr,
+			RPCPort:        rpcPort,
+			DataDir:        dataDir,
+
+			ACLModelFile:  config.ACLModelFile,
+			ACLPolicyFile: config.ACLPolicyFile,
+
 			ServerTLSConfig: serverTLSConfig,
 			PeerTLSConfig:   peerTLSConfig,
+
+			// Только первая нода bootstrap'ит Raft-кластер.
+			Bootstrap: i == 0,
 		})
 		require.NoError(t, err)
 
 		agents = append(agents, a)
 	}
 
-	// После теста корректно останавливаем все три ноды
+	// После завершения теста выключаем все ноды
 	// и удаляем временные данные.
 	defer func() {
 		for _, a := range agents {
@@ -100,17 +114,25 @@ func TestAgent(t *testing.T) {
 		}
 	}()
 
-	// Даём Serf время обнаружить все ноды.
+	// Даём Serf/Raft время обнаружить ноды,
+	// добавить их в кластер и стабилизироваться.
 	time.Sleep(3 * time.Second)
 
-	// Подключаемся к Node 0.
+	// Создаём клиент.
+	//
+	// ВАЖНО:
+	// теперь это уже не клиент, жёстко привязанный к agents[0].
+	//
+	// agents[0] является стартовой точкой discovery.
+	// Наш Resolver вызовет GetServers() и узнает обо всём кластере.
 	leaderClient := client(
 		t,
 		agents[0],
 		peerTLSConfig,
 	)
 
-	// Записываем "foo" ТОЛЬКО в Node 0.
+	// Produce через Picker должен быть направлен
+	// на текущего Raft leader.
 	produceResponse, err := leaderClient.Produce(
 		context.Background(),
 		&api.ProduceRequest{
@@ -121,7 +143,13 @@ func TestAgent(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Проверяем, что Node 0 сама может прочитать запись.
+	// Теперь Consume будет направлен Picker'ом
+	// не на leader, а на одного из followers.
+	//
+	// Поэтому сначала нужно дать Raft время
+	// реплицировать запись на followers.
+	time.Sleep(3 * time.Second)
+
 	consumeResponse, err := leaderClient.Consume(
 		context.Background(),
 		&api.ConsumeRequest{
@@ -136,19 +164,16 @@ func TestAgent(t *testing.T) {
 		[]byte("foo"),
 	)
 
-	// Даём Replicator время скопировать запись
-	// с Node 0 на остальные ноды.
-	time.Sleep(3 * time.Second)
-
-	// Теперь подключаемся уже к Node 1.
+	// Создаём ещё один клиент, используя вторую ноду
+	// как стартовую точку discovery.
+	//
+	// Resolver всё равно должен узнать весь кластер.
 	followerClient := client(
 		t,
 		agents[1],
 		peerTLSConfig,
 	)
 
-	// И пытаемся получить ту же запись с Node 1.
-	// Если получили "foo", значит репликация сработала.
 	consumeResponse, err = followerClient.Consume(
 		context.Background(),
 		&api.ConsumeRequest{
@@ -162,27 +187,80 @@ func TestAgent(t *testing.T) {
 		consumeResponse.Record.Value,
 		[]byte("foo"),
 	)
+
+	// Мы записали ТОЛЬКО одну запись.
+	//
+	// Раньше, до Raft, серверы могли реплицировать
+	// записи друг у друга циклически:
+	//
+	// A -> B -> A -> B -> ...
+	//
+	// Теперь такого быть не должно.
+	//
+	// Поэтому следующего offset существовать не должно.
+	consumeResponse, err = leaderClient.Consume(
+		context.Background(),
+		&api.ConsumeRequest{
+			Offset: produceResponse.Offset + 1,
+		},
+	)
+
+	require.Nil(t, consumeResponse)
+	require.Error(t, err)
+
+	got := grpc.Code(err)
+	want := grpc.Code(
+		api.ErrOffsetOutOfRange{}.
+			GRPCStatus().
+			Err(),
+	)
+
+	require.Equal(t, got, want)
 }
 
+// client создаёт gRPC-клиент, использующий наш собственный
+// Resolver и Picker.
+//
+// Раньше здесь было:
+//
+//     grpc.Dial(rpcAddr, ...)
+//
+// и клиент подключался непосредственно к одной ноде.
+//
+// Теперь target имеет вид:
+//
+//     proglog:///127.0.0.1:12345
+//
+// "proglog" — Scheme нашего Resolver.
+//
+// Поэтому gRPC:
+//   1. находит loadbalance.Resolver;
+//   2. Resolver подключается к указанной стартовой ноде;
+//   3. вызывает GetServers();
+//   4. получает адреса всех серверов;
+//   5. передаёт их Balancer;
+//   6. Picker направляет Produce -> leader;
+//   7. Picker направляет Consume -> followers.
 func client(
 	t *testing.T,
-	a *agent.Agent,
+	agent *agent.Agent,
 	tlsConfig *tls.Config,
 ) api.LogClient {
-	// TLS для подключения к конкретной ноде.
 	tlsCreds := credentials.NewTLS(tlsConfig)
 
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(tlsCreds),
 	}
 
-	// Получаем gRPC-адрес ноды.
-	rpcAddr, err := a.Config.RPCAddr()
+	rpcAddr, err := agent.Config.RPCAddr()
 	require.NoError(t, err)
 
-	// Открываем gRPC-соединение.
 	conn, err := grpc.Dial(
-		fmt.Sprintf("%s", rpcAddr),
+		fmt.Sprintf(
+			"%s:///%s",
+			loadbalance.Name,
+			rpcAddr,
+		),
 		opts...,
 	)
 	require.NoError(t, err)

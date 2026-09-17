@@ -25,6 +25,8 @@ type Record struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Value         []byte                 `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
 	Offset        uint64                 `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
+	Term          uint64                 `protobuf:"varint,3,opt,name=term,proto3" json:"term,omitempty"`
+	Type          uint32                 `protobuf:"varint,4,opt,name=type,proto3" json:"type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -69,6 +71,20 @@ func (x *Record) GetValue() []byte {
 func (x *Record) GetOffset() uint64 {
 	if x != nil {
 		return x.Offset
+	}
+	return 0
+}
+
+func (x *Record) GetTerm() uint64 {
+	if x != nil {
+		return x.Term
+	}
+	return 0
+}
+
+func (x *Record) GetType() uint32 {
+	if x != nil {
+		return x.Type
 	}
 	return 0
 }
@@ -249,14 +265,156 @@ func (x *ConsumeResponse) GetRecord() *Record {
 	return nil
 }
 
+type GetServersRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetServersRequest) Reset() {
+	*x = GetServersRequest{}
+	mi := &file_api_v1_log_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetServersRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetServersRequest) ProtoMessage() {}
+
+func (x *GetServersRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_v1_log_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetServersRequest.ProtoReflect.Descriptor instead.
+func (*GetServersRequest) Descriptor() ([]byte, []int) {
+	return file_api_v1_log_proto_rawDescGZIP(), []int{5}
+}
+
+type GetServersResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Servers       []*Server              `protobuf:"bytes,1,rep,name=servers,proto3" json:"servers,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetServersResponse) Reset() {
+	*x = GetServersResponse{}
+	mi := &file_api_v1_log_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetServersResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetServersResponse) ProtoMessage() {}
+
+func (x *GetServersResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_v1_log_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetServersResponse.ProtoReflect.Descriptor instead.
+func (*GetServersResponse) Descriptor() ([]byte, []int) {
+	return file_api_v1_log_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *GetServersResponse) GetServers() []*Server {
+	if x != nil {
+		return x.Servers
+	}
+	return nil
+}
+
+type Server struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	RpcAddr       string                 `protobuf:"bytes,2,opt,name=rpc_addr,json=rpcAddr,proto3" json:"rpc_addr,omitempty"`
+	IsLeader      bool                   `protobuf:"varint,3,opt,name=is_leader,json=isLeader,proto3" json:"is_leader,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Server) Reset() {
+	*x = Server{}
+	mi := &file_api_v1_log_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Server) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Server) ProtoMessage() {}
+
+func (x *Server) ProtoReflect() protoreflect.Message {
+	mi := &file_api_v1_log_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Server.ProtoReflect.Descriptor instead.
+func (*Server) Descriptor() ([]byte, []int) {
+	return file_api_v1_log_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *Server) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Server) GetRpcAddr() string {
+	if x != nil {
+		return x.RpcAddr
+	}
+	return ""
+}
+
+func (x *Server) GetIsLeader() bool {
+	if x != nil {
+		return x.IsLeader
+	}
+	return false
+}
+
 var File_api_v1_log_proto protoreflect.FileDescriptor
 
 const file_api_v1_log_proto_rawDesc = "" +
 	"\n" +
-	"\x10api/v1/log.proto\x12\x06log.v1\"6\n" +
+	"\x10api/v1/log.proto\x12\x06log.v1\"^\n" +
 	"\x06Record\x12\x14\n" +
 	"\x05value\x18\x01 \x01(\fR\x05value\x12\x16\n" +
-	"\x06offset\x18\x02 \x01(\x04R\x06offset\"8\n" +
+	"\x06offset\x18\x02 \x01(\x04R\x06offset\x12\x12\n" +
+	"\x04term\x18\x03 \x01(\x04R\x04term\x12\x12\n" +
+	"\x04type\x18\x04 \x01(\rR\x04type\"8\n" +
 	"\x0eProduceRequest\x12&\n" +
 	"\x06record\x18\x01 \x01(\v2\x0e.log.v1.RecordR\x06record\")\n" +
 	"\x0fProduceResponse\x12\x16\n" +
@@ -264,12 +422,21 @@ const file_api_v1_log_proto_rawDesc = "" +
 	"\x0eConsumeRequest\x12\x16\n" +
 	"\x06offset\x18\x01 \x01(\x04R\x06offset\"9\n" +
 	"\x0fConsumeResponse\x12&\n" +
-	"\x06record\x18\x02 \x01(\v2\x0e.log.v1.RecordR\x06record2\x8f\x02\n" +
+	"\x06record\x18\x02 \x01(\v2\x0e.log.v1.RecordR\x06record\"\x13\n" +
+	"\x11GetServersRequest\">\n" +
+	"\x12GetServersResponse\x12(\n" +
+	"\aservers\x18\x01 \x03(\v2\x0e.log.v1.ServerR\aservers\"P\n" +
+	"\x06Server\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
+	"\brpc_addr\x18\x02 \x01(\tR\arpcAddr\x12\x1b\n" +
+	"\tis_leader\x18\x03 \x01(\bR\bisLeader2\xd6\x02\n" +
 	"\x03Log\x12<\n" +
 	"\aProduce\x12\x16.log.v1.ProduceRequest\x1a\x17.log.v1.ProduceResponse\"\x00\x12<\n" +
 	"\aConsume\x12\x16.log.v1.ConsumeRequest\x1a\x17.log.v1.ConsumeResponse\"\x00\x12D\n" +
 	"\rConsumeStream\x12\x16.log.v1.ConsumeRequest\x1a\x17.log.v1.ConsumeResponse\"\x000\x01\x12F\n" +
-	"\rProduceStream\x12\x16.log.v1.ProduceRequest\x1a\x17.log.v1.ProduceResponse\"\x00(\x010\x01B\x14Z\x12logprog/api/log_v1b\x06proto3"
+	"\rProduceStream\x12\x16.log.v1.ProduceRequest\x1a\x17.log.v1.ProduceResponse\"\x00(\x010\x01\x12E\n" +
+	"\n" +
+	"GetServers\x12\x19.log.v1.GetServersRequest\x1a\x1a.log.v1.GetServersResponse\"\x00B\x14Z\x12logprog/api/log_v1b\x06proto3"
 
 var (
 	file_api_v1_log_proto_rawDescOnce sync.Once
@@ -283,30 +450,36 @@ func file_api_v1_log_proto_rawDescGZIP() []byte {
 	return file_api_v1_log_proto_rawDescData
 }
 
-var file_api_v1_log_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_api_v1_log_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_api_v1_log_proto_goTypes = []any{
-	(*Record)(nil),          // 0: log.v1.Record
-	(*ProduceRequest)(nil),  // 1: log.v1.ProduceRequest
-	(*ProduceResponse)(nil), // 2: log.v1.ProduceResponse
-	(*ConsumeRequest)(nil),  // 3: log.v1.ConsumeRequest
-	(*ConsumeResponse)(nil), // 4: log.v1.ConsumeResponse
+	(*Record)(nil),             // 0: log.v1.Record
+	(*ProduceRequest)(nil),     // 1: log.v1.ProduceRequest
+	(*ProduceResponse)(nil),    // 2: log.v1.ProduceResponse
+	(*ConsumeRequest)(nil),     // 3: log.v1.ConsumeRequest
+	(*ConsumeResponse)(nil),    // 4: log.v1.ConsumeResponse
+	(*GetServersRequest)(nil),  // 5: log.v1.GetServersRequest
+	(*GetServersResponse)(nil), // 6: log.v1.GetServersResponse
+	(*Server)(nil),             // 7: log.v1.Server
 }
 var file_api_v1_log_proto_depIdxs = []int32{
 	0, // 0: log.v1.ProduceRequest.record:type_name -> log.v1.Record
 	0, // 1: log.v1.ConsumeResponse.record:type_name -> log.v1.Record
-	1, // 2: log.v1.Log.Produce:input_type -> log.v1.ProduceRequest
-	3, // 3: log.v1.Log.Consume:input_type -> log.v1.ConsumeRequest
-	3, // 4: log.v1.Log.ConsumeStream:input_type -> log.v1.ConsumeRequest
-	1, // 5: log.v1.Log.ProduceStream:input_type -> log.v1.ProduceRequest
-	2, // 6: log.v1.Log.Produce:output_type -> log.v1.ProduceResponse
-	4, // 7: log.v1.Log.Consume:output_type -> log.v1.ConsumeResponse
-	4, // 8: log.v1.Log.ConsumeStream:output_type -> log.v1.ConsumeResponse
-	2, // 9: log.v1.Log.ProduceStream:output_type -> log.v1.ProduceResponse
-	6, // [6:10] is the sub-list for method output_type
-	2, // [2:6] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	7, // 2: log.v1.GetServersResponse.servers:type_name -> log.v1.Server
+	1, // 3: log.v1.Log.Produce:input_type -> log.v1.ProduceRequest
+	3, // 4: log.v1.Log.Consume:input_type -> log.v1.ConsumeRequest
+	3, // 5: log.v1.Log.ConsumeStream:input_type -> log.v1.ConsumeRequest
+	1, // 6: log.v1.Log.ProduceStream:input_type -> log.v1.ProduceRequest
+	5, // 7: log.v1.Log.GetServers:input_type -> log.v1.GetServersRequest
+	2, // 8: log.v1.Log.Produce:output_type -> log.v1.ProduceResponse
+	4, // 9: log.v1.Log.Consume:output_type -> log.v1.ConsumeResponse
+	4, // 10: log.v1.Log.ConsumeStream:output_type -> log.v1.ConsumeResponse
+	2, // 11: log.v1.Log.ProduceStream:output_type -> log.v1.ProduceResponse
+	6, // 12: log.v1.Log.GetServers:output_type -> log.v1.GetServersResponse
+	8, // [8:13] is the sub-list for method output_type
+	3, // [3:8] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_api_v1_log_proto_init() }
@@ -320,7 +493,7 @@ func file_api_v1_log_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_v1_log_proto_rawDesc), len(file_api_v1_log_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

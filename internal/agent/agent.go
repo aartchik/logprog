@@ -1,30 +1,37 @@
 package agent
 
 import (
+	"bytes"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
 	"sync"
+	"time"
 
+	"github.com/hashicorp/raft"
+	"github.com/soheilhy/cmux"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	api "logprog/api/v1"
 	"logprog/internal/auth"
 	"logprog/internal/discovery"
 	"logprog/internal/log"
-
 	"logprog/internal/server"
 )
 
 type Agent struct {
-	Config
+	Config Config
 
-	log        *log.Log
+	// Один TCP-порт разделяем между Raft и gRPC.
+	mux cmux.CMux
+
+	// Теперь используем DistributedLog с Raft,
+	// а старый Replicator больше не нужен.
+	log        *log.DistributedLog
 	server     *grpc.Server
 	membership *discovery.Membership
-	replicator *log.Replicator
 
 	shutdown     bool
 	shutdowns    chan struct{}
@@ -36,13 +43,16 @@ type Config struct {
 	PeerTLSConfig   *tls.Config
 
 	DataDir        string
-	BindAddr       string
-	RPCPort        int
+	BindAddr       string // адрес Serf
+	RPCPort        int    // общий порт для gRPC + Raft
 	NodeName       string
 	StartJoinAddrs []string
 
 	ACLModelFile  string
 	ACLPolicyFile string
+
+	// Первая нода создаёт первоначальный Raft-кластер.
+	Bootstrap bool
 }
 
 func (c Config) RPCAddr() (string, error) {
@@ -62,6 +72,7 @@ func New(config Config) (*Agent, error) {
 
 	setup := []func() error{
 		a.setupLogger,
+		a.setupMux,
 		a.setupLog,
 		a.setupServer,
 		a.setupMembership,
@@ -73,6 +84,10 @@ func New(config Config) (*Agent, error) {
 		}
 	}
 
+	// Запускаем cmux, который начинает принимать соединения
+	// и распределять их между Raft и gRPC.
+	go a.serve()
+
 	return a, nil
 }
 
@@ -83,61 +98,115 @@ func (a *Agent) setupLogger() error {
 	}
 
 	zap.ReplaceGlobals(logger)
+
 	return nil
 }
 
-func (a *Agent) setupLog() error {
-	var err error
-
-	a.log, err = log.NewLog(
-		a.Config.DataDir,
-		log.Config{},
+func (a *Agent) setupMux() error {
+	rpcAddr := fmt.Sprintf(
+		":%d",
+		a.Config.RPCPort,
 	)
 
-	return err
-}
-
-func (a *Agent) setupServer() error {
-	// Создаём систему авторизации.
-	authorizer := auth.New(
-		a.Config.ACLModelFile,
-		a.Config.ACLPolicyFile,
-	)
-
-	// Наш gRPC-сервер будет работать именно с локальным Log этой ноды.
-	serverConfig := &server.Config{
-		CommitLog:  a.log,
-		Authorizer: authorizer,
-	}
-
-	var opts []grpc.ServerOption
-
-	// Если настроен TLS, заставляем gRPC-сервер использовать его.
-	if a.Config.ServerTLSConfig != nil {
-		creds := credentials.NewTLS(a.Config.ServerTLSConfig)
-		opts = append(opts, grpc.Creds(creds))
-	}
-
-	var err error
-	a.server, err = server.NewGRPCServer(serverConfig, opts...)
-	if err != nil {
-		return err
-	}
-
-	// Получаем адрес именно gRPC-сервера.
-	rpcAddr, err := a.RPCAddr()
-	if err != nil {
-		return err
-	}
-
+	// Один физический TCP listener.
 	ln, err := net.Listen("tcp", rpcAddr)
 	if err != nil {
 		return err
 	}
 
-	// Serve блокируется, поэтому запускаем сервер в отдельной горутине.
+	// cmux будет делить соединения между Raft и gRPC.
+	a.mux = cmux.New(ln)
+
+	return nil
+}
+
+func (a *Agent) setupLog() error {
+	// Raft-соединение первым байтом отправляет RaftRPC (= 1).
+	// Поэтому cmux может отличить Raft от gRPC.
+	raftLn := a.mux.Match(func(reader io.Reader) bool {
+		b := make([]byte, 1)
+
+		if _, err := reader.Read(b); err != nil {
+			return false
+		}
+
+		return bytes.Compare(
+			b,
+			[]byte{byte(log.RaftRPC)},
+		) == 0
+	})
+
+	logConfig := log.Config{}
+
+	logConfig.Raft.StreamLayer = log.NewStreamLayer(
+		raftLn,
+		a.Config.ServerTLSConfig,
+		a.Config.PeerTLSConfig,
+	)
+
+	logConfig.Raft.LocalID = raft.ServerID(a.Config.NodeName)
+	logConfig.Raft.Bootstrap = a.Config.Bootstrap
+
+	var err error
+
+	a.log, err = log.NewDistributedLog(
+		a.Config.DataDir,
+		logConfig,
+	)
+	if err != nil {
+		return err
+	}
+
+	// Первая нода bootstrap'ит кластер и должна дождаться,
+	// пока Raft выберет лидера.
+	if a.Config.Bootstrap {
+		err = a.log.WaitForLeader(3 * time.Second)
+	}
+
+	return err
+}
+
+func (a *Agent) setupServer() error {
+	authorizer := auth.New(
+		a.Config.ACLModelFile,
+		a.Config.ACLPolicyFile,
+	)
+
+	serverConfig := &server.Config{
+		CommitLog:  a.log,
+		Authorizer: authorizer,
+		GetServerer: a.log,
+	}
+
+	var opts []grpc.ServerOption
+
+	if a.Config.ServerTLSConfig != nil {
+		creds := credentials.NewTLS(
+			a.Config.ServerTLSConfig,
+		)
+
+		opts = append(
+			opts,
+			grpc.Creds(creds),
+		)
+	}
+
+	var err error
+
+	a.server, err = server.NewGRPCServer(
+		serverConfig,
+		opts...,
+	)
+	if err != nil {
+		return err
+	}
+
+	// Всё, что cmux не распознал как Raft,
+	// отдаём gRPC-серверу.
+	grpcLn := a.mux.Match(cmux.Any())
+
 	go func() {
-		if err := a.server.Serve(ln); err != nil {
+		if err := a.server.Serve(grpcLn); err != nil {
 			_ = a.Shutdown()
 		}
 	}()
@@ -151,45 +220,22 @@ func (a *Agent) setupMembership() error {
 		return err
 	}
 
-	var opts []grpc.DialOption
-
-	// Эти credentials используются, когда эта нода сама выступает
-	// gRPC-клиентом и подключается к другой ноде.
-	if a.Config.PeerTLSConfig != nil {
-		opts = append(opts,
-			grpc.WithTransportCredentials(
-				credentials.NewTLS(a.Config.PeerTLSConfig),
-			),
-		)
-	}
-
-	// Подключаемся к собственному gRPC-серверу.
-	conn, err := grpc.Dial(rpcAddr, opts...)
-	if err != nil {
-		return err
-	}
-
-	client := api.NewLogClient(conn)
-
-	// Replicator будет:
-	// 1. читать данные с других нод;
-	// 2. писать полученные данные через LocalServer в эту ноду.
-	a.replicator = &log.Replicator{
-		DialOptions: opts,
-		LocalServer: client,
-	}
-
-	// Membership получает Replicator как Handler.
-	// Поэтому события Serf Join/Leave превращаются в
-	// Replicator.Join()/Replicator.Leave().
+	// ВАЖНО:
+	// handler теперь a.log (DistributedLog).
+	//
+	// Serf обнаруживает ноду
+	// -> Membership вызывает a.log.Join(...)
+	// -> DistributedLog добавляет её в Raft.
 	a.membership, err = discovery.New(
-		a.replicator,
+		a.log,
 		discovery.Config{
 			NodeName: a.Config.NodeName,
 			BindAddr: a.Config.BindAddr,
+
 			Tags: map[string]string{
 				"rpc_addr": rpcAddr,
 			},
+
 			StartJoinAddrs: a.Config.StartJoinAddrs,
 		},
 	)
@@ -201,33 +247,42 @@ func (a *Agent) Shutdown() error {
 	a.shutdownLock.Lock()
 	defer a.shutdownLock.Unlock()
 
-	// Не даём остановить Agent повторно.
 	if a.shutdown {
 		return nil
 	}
 
 	a.shutdown = true
-
-	// Сигнал остальным частям программы:
-	// Agent начал завершение работы.
 	close(a.shutdowns)
 
-	shutdown := []func() error{
-		a.membership.Leave,
-		a.replicator.Close,
-
-		func() error {
-			a.server.GracefulStop()
-			return nil
-		},
-
-		a.log.Close,
+	// Сначала сообщаем Serf, что нода уходит.
+	if err := a.membership.Leave(); err != nil {
+		return err
 	}
 
-	for _, fn := range shutdown {
-		if err := fn(); err != nil {
-			return err
-		}
+	// Replicator.Close() здесь БОЛЬШЕ НЕТ.
+	// Репликацией теперь занимается Raft.
+
+	// Останавливаем gRPC.
+	a.server.GracefulStop()
+
+	// DistributedLog.Close() остановит Raft
+	// и закроет локальный log.
+	if err := a.log.Close(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (a *Agent) serve() error {
+	// Запускаем настоящий listener.
+	// cmux будет распределять соединения:
+	//
+	// первый байт == RaftRPC -> Raft
+	// всё остальное          -> gRPC
+	if err := a.mux.Serve(); err != nil {
+		_ = a.Shutdown()
+		return err
 	}
 
 	return nil
