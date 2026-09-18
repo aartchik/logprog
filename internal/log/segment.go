@@ -1,11 +1,15 @@
 package log
 
 import (
+	"encoding/binary"
 	"fmt"
-	"google.golang.org/protobuf/proto"
-	api "logprog/api/v1"
+	"io"
 	"os"
 	"path"
+
+	"google.golang.org/protobuf/proto"
+
+	api "logprog/api/v1"
 )
 
 type segment struct {
@@ -49,12 +53,45 @@ func newSegment(dir string, baseOffset uint64, c Config) (*segment, error) {
 		return nil, err
 	}
 
-	if off, _, err := s.index.Read(-1); err != nil {
-		s.nextOffset = baseOffset
-	} else {
-		s.nextOffset = baseOffset + entWidth*uint64(off) + 1
+	if err = s.rebuildIndex(); err != nil {
+		return nil, err
 	}
+
 	return s, nil
+}
+
+func (s *segment) rebuildIndex() error {
+	s.index.size = 0
+	header := make([]byte, lenWidth)
+
+	var pos uint64
+	var relativeOffset uint32
+
+	for pos < s.store.size {
+		if s.store.size-pos < uint64(lenWidth) {
+			return io.ErrUnexpectedEOF
+		}
+
+		if _, err := s.store.File.ReadAt(header, int64(pos)); err != nil {
+			return err
+		}
+
+		recordSize := binary.BigEndian.Uint64(header)
+		nextPos := pos + uint64(lenWidth) + recordSize
+		if nextPos < pos || nextPos > s.store.size {
+			return io.ErrUnexpectedEOF
+		}
+
+		if err := s.index.Write(relativeOffset, pos); err != nil {
+			return err
+		}
+
+		pos = nextPos
+		relativeOffset++
+	}
+
+	s.nextOffset = s.baseOffset + uint64(relativeOffset)
+	return nil
 }
 
 func (s *segment) Append(record *api.Record) (offset uint64, err error) {

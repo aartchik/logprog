@@ -1,15 +1,13 @@
-replicas: 3
+# Default values for proglog.
 
 image:
   repository: logprog
-  tag: 0.0.1
+  tag: 0.0.3
   pullPolicy: IfNotPresent
 
+serfPort: 8401
 rpcPort: 8400
 
-serfPort: 8401
+replicas: 3
 
 storage: 1Gi
-
-nameOverride: ""
-fullnameOverride: ""

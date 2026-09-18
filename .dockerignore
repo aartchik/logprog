@@ -1,0 +1,5 @@
+.git
+.gocache
+.gomodcache
+*.pdf
+.DS_Store

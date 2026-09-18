@@ -50,7 +50,6 @@ spec:
         - name: {{ include "proglog.fullname" . }}
 
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-
           imagePullPolicy: {{ .Values.image.pullPolicy }}
 
           ports:
@@ -62,6 +61,22 @@ spec:
 
           args:
             - --config-file=/var/run/proglog/config.yaml
+
+          readinessProbe:
+            exec:
+              command:
+                - /bin/grpc_health_probe
+                - -addr=:{{ .Values.rpcPort }}
+            initialDelaySeconds: 10
+            timeoutSeconds: 3
+
+          livenessProbe:
+            exec:
+              command:
+                - /bin/grpc_health_probe
+                - -addr=:{{ .Values.rpcPort }}
+            initialDelaySeconds: 10
+            timeoutSeconds: 3
 
           volumeMounts:
             - name: datadir

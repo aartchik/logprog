@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tysonmote/gommap"
+
 	api "logprog/api/v1"
 )
 
@@ -70,4 +72,32 @@ func TestSegment(t *testing.T) {
 
 	// Теперь он пустой.
 	require.False(t, s.IsMaxed())
+}
+
+func TestSegmentRecoversPreallocatedIndex(t *testing.T) {
+	dir := t.TempDir()
+
+	c := Config{}
+	c.Segment.MaxStoreBytes = 1024
+	c.Segment.MaxIndexBytes = 1024
+
+	s, err := newSegment(dir, 16, c)
+	require.NoError(t, err)
+
+	for i := 0; i < 2; i++ {
+		_, err = s.Append(&api.Record{Value: []byte("record")})
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, s.store.buf.Flush())
+	require.NoError(t, s.index.mmap.Sync(gommap.MS_SYNC))
+
+	reopened, err := newSegment(dir, 16, c)
+	require.NoError(t, err)
+	require.Equal(t, uint64(18), reopened.nextOffset)
+
+	off, err := reopened.Append(&api.Record{Value: []byte("after restart")})
+	require.NoError(t, err)
+	require.Equal(t, uint64(18), off)
+	require.NoError(t, reopened.Close())
 }

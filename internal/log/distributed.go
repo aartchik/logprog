@@ -165,7 +165,7 @@ func (l *DistributedLog) setupRaft(dataDir string) error {
 			Servers: []raft.Server{
 				{
 					ID:      config.LocalID,
-					Address: transport.LocalAddr(),
+					Address: raft.ServerAddress(l.config.Raft.BindAddr),
 				},
 			},
 		}
@@ -595,7 +595,6 @@ func (l *DistributedLog) Close() error {
 	}
 	return l.log.Close()
 }
-
 
 func (l *DistributedLog) GetServers() ([]*api.Server, error) {
 	// Просим Raft дать текущую конфигурацию кластера.

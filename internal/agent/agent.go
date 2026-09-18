@@ -103,18 +103,13 @@ func (a *Agent) setupLogger() error {
 }
 
 func (a *Agent) setupMux() error {
-	rpcAddr := fmt.Sprintf(
-		":%d",
-		a.Config.RPCPort,
-	)
+	rpcAddr := fmt.Sprintf(":%d", a.Config.RPCPort)
 
-	// Один физический TCP listener.
 	ln, err := net.Listen("tcp", rpcAddr)
 	if err != nil {
 		return err
 	}
 
-	// cmux будет делить соединения между Raft и gRPC.
 	a.mux = cmux.New(ln)
 
 	return nil
@@ -143,11 +138,14 @@ func (a *Agent) setupLog() error {
 		a.Config.ServerTLSConfig,
 		a.Config.PeerTLSConfig,
 	)
+	rpcAddr, err := a.Config.RPCAddr()
+	if err != nil {
+		return err
+	}
+	logConfig.Raft.BindAddr = rpcAddr
 
 	logConfig.Raft.LocalID = raft.ServerID(a.Config.NodeName)
 	logConfig.Raft.Bootstrap = a.Config.Bootstrap
-
-	var err error
 
 	a.log, err = log.NewDistributedLog(
 		a.Config.DataDir,
@@ -173,8 +171,8 @@ func (a *Agent) setupServer() error {
 	)
 
 	serverConfig := &server.Config{
-		CommitLog:  a.log,
-		Authorizer: authorizer,
+		CommitLog:   a.log,
+		Authorizer:  authorizer,
 		GetServerer: a.log,
 	}
 
