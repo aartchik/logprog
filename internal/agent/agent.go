@@ -24,11 +24,8 @@ import (
 type Agent struct {
 	Config Config
 
-	// Один TCP-порт разделяем между Raft и gRPC.
 	mux cmux.CMux
 
-	// Теперь используем DistributedLog с Raft,
-	// а старый Replicator больше не нужен.
 	log        *log.DistributedLog
 	server     *grpc.Server
 	membership *discovery.Membership
@@ -43,15 +40,14 @@ type Config struct {
 	PeerTLSConfig   *tls.Config
 
 	DataDir        string
-	BindAddr       string // адрес Serf
-	RPCPort        int    // общий порт для gRPC + Raft
+	BindAddr       string
+	RPCPort        int
 	NodeName       string
 	StartJoinAddrs []string
 
 	ACLModelFile  string
 	ACLPolicyFile string
 
-	// Первая нода создаёт первоначальный Raft-кластер.
 	Bootstrap bool
 }
 
@@ -84,8 +80,6 @@ func New(config Config) (*Agent, error) {
 		}
 	}
 
-	// Запускаем cmux, который начинает принимать соединения
-	// и распределять их между Raft и gRPC.
 	go a.serve()
 
 	return a, nil
@@ -116,8 +110,7 @@ func (a *Agent) setupMux() error {
 }
 
 func (a *Agent) setupLog() error {
-	// Raft-соединение первым байтом отправляет RaftRPC (= 1).
-	// Поэтому cmux может отличить Raft от gRPC.
+
 	raftLn := a.mux.Match(func(reader io.Reader) bool {
 		b := make([]byte, 1)
 
@@ -155,8 +148,6 @@ func (a *Agent) setupLog() error {
 		return err
 	}
 
-	// Первая нода bootstrap'ит кластер и должна дождаться,
-	// пока Raft выберет лидера.
 	if a.Config.Bootstrap {
 		err = a.log.WaitForLeader(3 * time.Second)
 	}
@@ -199,8 +190,6 @@ func (a *Agent) setupServer() error {
 		return err
 	}
 
-	// Всё, что cmux не распознал как Raft,
-	// отдаём gRPC-серверу.
 	grpcLn := a.mux.Match(cmux.Any())
 
 	go func() {
@@ -218,12 +207,6 @@ func (a *Agent) setupMembership() error {
 		return err
 	}
 
-	// ВАЖНО:
-	// handler теперь a.log (DistributedLog).
-	//
-	// Serf обнаруживает ноду
-	// -> Membership вызывает a.log.Join(...)
-	// -> DistributedLog добавляет её в Raft.
 	a.membership, err = discovery.New(
 		a.log,
 		discovery.Config{
@@ -252,19 +235,12 @@ func (a *Agent) Shutdown() error {
 	a.shutdown = true
 	close(a.shutdowns)
 
-	// Сначала сообщаем Serf, что нода уходит.
 	if err := a.membership.Leave(); err != nil {
 		return err
 	}
 
-	// Replicator.Close() здесь БОЛЬШЕ НЕТ.
-	// Репликацией теперь занимается Raft.
-
-	// Останавливаем gRPC.
 	a.server.GracefulStop()
 
-	// DistributedLog.Close() остановит Raft
-	// и закроет локальный log.
 	if err := a.log.Close(); err != nil {
 		return err
 	}
@@ -273,11 +249,7 @@ func (a *Agent) Shutdown() error {
 }
 
 func (a *Agent) serve() error {
-	// Запускаем настоящий listener.
-	// cmux будет распределять соединения:
-	//
-	// первый байт == RaftRPC -> Raft
-	// всё остальное          -> gRPC
+
 	if err := a.mux.Serve(); err != nil {
 		_ = a.Shutdown()
 		return err

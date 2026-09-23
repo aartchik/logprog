@@ -22,13 +22,10 @@ func TestMultipleNodes(t *testing.T) {
 
 	nodeCount := 3
 
-	// Получаем 3 свободных порта:
-	// по одному для каждой Raft-ноды.
 	ports := dynaport.Get(nodeCount)
 
 	for i := 0; i < nodeCount; i++ {
 
-		// У каждой ноды свой отдельный диск/директория.
 		dataDir, err := ioutil.TempDir("", "distributed-log-test")
 		require.NoError(t, err)
 
@@ -36,7 +33,6 @@ func TestMultipleNodes(t *testing.T) {
 			_ = os.RemoveAll(dir)
 		}(dataDir)
 
-		// Каждая нода слушает свой TCP-порт.
 		ln, err := net.Listen(
 			"tcp",
 			fmt.Sprintf("127.0.0.1:%d", ports[i]),
@@ -45,21 +41,16 @@ func TestMultipleNodes(t *testing.T) {
 
 		config := log.Config{}
 
-		// Сетевой слой, через который Raft будет общаться
-		// с другими Raft-нодами.
 		config.Raft.StreamLayer = log.NewStreamLayer(ln, nil, nil)
 
-		// Уникальный ID ноды: "0", "1", "2".
 		config.Raft.LocalID = raft.ServerID(fmt.Sprintf("%d", i))
 
-		// Маленькие timeout'ы только для ускорения теста.
 		config.Raft.HeartbeatTimeout = 50 * time.Millisecond
 		config.Raft.ElectionTimeout = 50 * time.Millisecond
 		config.Raft.LeaderLeaseTimeout = 50 * time.Millisecond
 		config.Raft.CommitTimeout = 5 * time.Millisecond
 		config.Raft.BindAddr = ln.Addr().String()
 
-		// Только первая нода создаёт первоначальный Raft-кластер.
 		if i == 0 {
 			config.Raft.Bootstrap = true
 		}
@@ -68,14 +59,14 @@ func TestMultipleNodes(t *testing.T) {
 		require.NoError(t, err)
 
 		if i != 0 {
-			// Ноды 1 и 2 добавляем в Raft-кластер через лидера.
+
 			err = logs[0].Join(
 				fmt.Sprintf("%d", i),
 				ln.Addr().String(),
 			)
 			require.NoError(t, err)
 		} else {
-			// Для первой ноды ждём, пока она станет лидером.
+
 			err = l.WaitForLeader(3 * time.Second)
 			require.NoError(t, err)
 		}
@@ -90,11 +81,9 @@ func TestMultipleNodes(t *testing.T) {
 
 	for _, record := range records {
 
-		// Пишем ТОЛЬКО лидеру.
 		off, err := logs[0].Append(record)
 		require.NoError(t, err)
 
-		// Ждём, пока запись появится на всех трёх нодах.
 		require.Eventually(t, func() bool {
 
 			for j := 0; j < nodeCount; j++ {
@@ -116,13 +105,11 @@ func TestMultipleNodes(t *testing.T) {
 		}, 500*time.Millisecond, 50*time.Millisecond)
 	}
 
-	// Удаляем node 1 из Raft-кластера.
 	err := logs[0].Leave("1")
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
 
-	// После удаления пишем ещё одну запись лидеру.
 	off, err := logs[0].Append(&api.Record{
 		Value: []byte("third"),
 	})
@@ -130,14 +117,11 @@ func TestMultipleNodes(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
-	// Node 1 больше не должна получить "third".
 	record, err := logs[1].Read(off)
 
 	require.IsType(t, api.ErrOffsetOutOfRange{}, err)
 	require.Nil(t, record)
 
-	// Node 2 всё ещё член Raft-кластера,
-	// поэтому должна получить "third".
 	record, err = logs[2].Read(off)
 
 	require.NoError(t, err)

@@ -1,5 +1,3 @@
-# Default values for proglog.
-
 image:
   repository: logprog
   tag: 0.0.3

@@ -158,13 +158,12 @@ func (c *cli) setupConfig(
 	viper.SetConfigFile(configFile)
 
 	if err = viper.ReadInConfig(); err != nil {
-		// Ничего страшного, если config-файла нет.
+
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return err
 		}
 	}
 
-	// Основная конфигурация Agent.
 	c.cfg.DataDir = viper.GetString("data-dir")
 	c.cfg.NodeName = viper.GetString("node-name")
 	c.cfg.BindAddr = viper.GetString("bind-addr")
@@ -175,7 +174,6 @@ func (c *cli) setupConfig(
 	c.cfg.ACLModelFile = viper.GetString("acl-model-file")
 	c.cfg.ACLPolicyFile = viper.GetString("acl-policy-file")
 
-	// TLS-конфигурация сервера.
 	c.cfg.ServerTLSConfig.CertFile =
 		viper.GetString("server-tls-cert-file")
 
@@ -185,7 +183,6 @@ func (c *cli) setupConfig(
 	c.cfg.ServerTLSConfig.CAFile =
 		viper.GetString("server-tls-ca-file")
 
-	// TLS-конфигурация соединений между нодами.
 	c.cfg.PeerTLSConfig.CertFile =
 		viper.GetString("peer-tls-cert-file")
 
@@ -195,8 +192,6 @@ func (c *cli) setupConfig(
 	c.cfg.PeerTLSConfig.CAFile =
 		viper.GetString("peer-tls-ca-file")
 
-	// Превращаем пути к TLS-файлам в настоящий *tls.Config
-	// для входящих соединений.
 	if c.cfg.ServerTLSConfig.CertFile != "" &&
 		c.cfg.ServerTLSConfig.KeyFile != "" {
 
@@ -210,7 +205,6 @@ func (c *cli) setupConfig(
 		}
 	}
 
-	// То же самое для исходящих соединений между нодами.
 	if c.cfg.PeerTLSConfig.CertFile != "" &&
 		c.cfg.PeerTLSConfig.KeyFile != "" {
 
@@ -234,7 +228,6 @@ func (c *cli) run(
 		return err
 	}
 
-	// Канал для сигналов завершения процесса.
 	sigc := make(chan os.Signal, 1)
 
 	signal.Notify(
@@ -243,9 +236,7 @@ func (c *cli) run(
 		syscall.SIGTERM,
 	)
 
-	// Блокируем main, пока не придёт SIGINT/SIGTERM.
 	<-sigc
 
-	// Корректно завершаем Agent.
 	return a.Shutdown()
 }

@@ -78,22 +78,19 @@ func (m *Membership) setupSerf() (err error) {
 	return nil
 }
 
-// Handler описывает, что наше приложение должно уметь сделать,
-// когда другая нода появилась или исчезла.
 type Handler interface {
 	Join(name, addr string) error
 	Leave(name string) error
 }
 
-// eventHandler постоянно слушает события от Serf.
 func (m *Membership) eventHandler() {
 	for e := range m.events {
 		switch e.EventType() {
 
 		case serf.EventMemberJoin:
-			// Одно событие может содержать сразу несколько нод.
+
 			for _, member := range e.(serf.MemberEvent).Members {
-				// Не обрабатываем событие о самих себе.
+
 				if m.isLocal(member) {
 					continue
 				}
@@ -130,17 +127,14 @@ func (m *Membership) handleLeave(member serf.Member) {
 	}
 }
 
-// Проверяем, является ли member нашей собственной Serf-нодой.
 func (m *Membership) isLocal(member serf.Member) bool {
 	return m.serf.LocalMember().Name == member.Name
 }
 
-// Получаем текущий список известных Serf-нод.
 func (m *Membership) Members() []serf.Member {
 	return m.serf.Members()
 }
 
-// Добровольно выходим из Serf-кластера.
 func (m *Membership) Leave() error {
 	return m.serf.Leave()
 }

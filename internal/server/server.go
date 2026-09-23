@@ -35,8 +35,8 @@ type Authorizer interface {
 }
 
 type Config struct {
-	CommitLog CommitLog
-	Authorizer Authorizer
+	CommitLog   CommitLog
+	Authorizer  Authorizer
 	GetServerer GetServerer
 }
 
@@ -211,7 +211,6 @@ func (s *grpcServer) GetServers(
 type GetServerer interface {
 	GetServers() ([]*api.Server, error)
 }
-
 
 func authenticate(ctx context.Context) (context.Context, error) {
 	peer, ok := peer.FromContext(ctx)
